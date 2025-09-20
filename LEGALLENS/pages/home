@@ -1,0 +1,551 @@
+
+import React, { useState, useEffect, useCallback } from "react";
+import { LegalDocument, User } from "@/entities/all";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import {
+  Scale,
+  Upload,
+  Shield,
+  Languages,
+  FileText,
+  AlertTriangle,
+  CheckCircle,
+  ArrowRight,
+  Sparkles,
+  Users,
+  TrendingUp,
+  PenSquare,
+  Briefcase,
+  Home as HomeIcon,
+  Handshake,
+  FileSignature,
+  HeartHandshake,
+  BarChart3,
+  Settings as SettingsIcon
+} from "lucide-react";
+import { motion } from "framer-motion";
+import DemoVideoModal from "../components/home/DemoVideoModal";
+
+export default function Home() {
+  const [stats, setStats] = useState({
+    documentsAnalyzed: 0,
+    redFlagsFound: 0,
+    usersHelped: 0
+  });
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [demoVideoUrl, setDemoVideoUrl] = useState('');
+  const [demoVideoTitle, setDemoVideoTitle] = useState('');
+
+  const loadStats = useCallback(async () => {
+    try {
+      const documents = await LegalDocument.list();
+      const redFlags = documents.reduce((total, doc) =>
+        total + (doc.red_flags?.length || 0), 0
+      );
+
+      setStats({
+        documentsAnalyzed: documents.length,
+        redFlagsFound: redFlags,
+        usersHelped: documents.length // Real-time count based on actual documents
+      });
+    } catch (error) {
+      console.log("Loading stats failed:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const openDemoModal = (type) => {
+    if (type === 'analysis') {
+      setDemoVideoTitle("Demo: AI Document Analysis");
+      setDemoVideoUrl("https://www.youtube.com/embed/S43v-o03_SY?autoplay=1&rel=0");
+    } else {
+      setDemoVideoTitle("Demo: AI Document Drafting");
+      setDemoVideoUrl("https://www.youtube.com/embed/G1Qd3qR39zY?autoplay=1&rel=0");
+    }
+    setIsDemoModalOpen(true);
+  };
+
+  const features = [
+    {
+      icon: FileText,
+      title: "Plain Language Summaries",
+      description: "Complex legal jargon transformed into simple, 15-year-old-friendly explanations",
+      color: "bg-blue-500"
+    },
+    {
+      icon: AlertTriangle,
+      title: "Red Flag Detection",
+      description: "AI identifies hidden clauses and potential legal traps before you sign",
+      color: "bg-red-500"
+    },
+    {
+      icon: Languages,
+      title: "Multi-Language Support",
+      description: "Get explanations in Hindi, Tamil, Bengali, and other Indian languages",
+      color: "bg-green-500"
+    },
+    {
+      icon: Shield,
+      title: "Risk Assessment",
+      description: "Comprehensive risk scoring to help you make informed decisions",
+      color: "bg-purple-500"
+    }
+  ];
+
+  const testimonials = [
+    {
+      name: "Priya Sharma",
+      role: "First-time Home Buyer",
+      quote: "LegalLens saved me from signing a terrible rental agreement. The red flags it found were eye-opening!",
+      rating: 5
+    },
+    {
+      name: "Rajesh Kumar",
+      role: "Small Business Owner",
+      quote: "Finally understand what I'm signing. The Hindi explanations made all the difference.",
+      rating: 5
+    },
+    {
+      name: "Anita Patel",
+      role: "Software Engineer",
+      quote: "Caught a clause that could have cost me lakhs. This tool is a game-changer!",
+      rating: 5
+    }
+  ];
+
+  const documentTypes = [
+    { name: "Rental Agreement", slug: "rental-agreement", icon: HomeIcon, description: "For landlords and tenants" },
+    { name: "Employment Contract", slug: "employment-contract", icon: Briefcase, description: "For employers and employees" },
+    { name: "Freelance Contract", slug: "freelance-contract", icon: PenSquare, description: "For independent contractors" },
+    { name: "NDA", slug: "non-disclosure-agreement", icon: Shield, description: "To protect sensitive information" },
+    { name: "Will & Testament", slug: "will-and-testament", icon: FileSignature, description: "To outline your last wishes" },
+    { name: "Loan Agreement", slug: "loan-agreement", icon: Handshake, description: "For personal or business loans" },
+    { name: "Service Agreement", slug: "service-agreement", icon: HeartHandshake, description: "For providing or receiving services" },
+    { name: "Partnership Agreement", slug: "partnership-agreement", icon: Users, description: "For starting a business partnership" },
+    { name: "Power of Attorney", slug: "power-of-attorney", icon: FileText, description: "To grant legal authority" },
+    { name: "Privacy Policy", slug: "privacy-policy", icon: Shield, description: "For websites and apps" },
+    { name: "Terms of Service", slug: "terms-of-service", icon: FileText, description: "For online platforms" },
+    { name: "Bill of Sale", slug: "bill-of-sale", icon: Handshake, description: "To document a sale of goods" },
+    { name: "Cease & Desist", slug: "cease-and-desist", icon: AlertTriangle, description: "To demand an end to an action" },
+    { name: "Promissory Note", slug: "promissory-note", icon: Handshake, description: "A written promise to pay money" },
+    { name: "Affidavit", slug: "affidavit", icon: FileSignature, description: "A sworn statement of fact" },
+    { name: "Other", slug: "other", icon: Sparkles, description: "Draft a custom document" }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      {/* Mobile Navigation Bar */}
+      <section className="md:hidden px-6 py-4 bg-white/80 backdrop-blur-sm border-b border-slate-200/60">
+        <div className="grid grid-cols-4 gap-3">
+          <Link to={createPageUrl("Upload")}>
+            <Card className="bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all duration-300 shadow-lg border-0">
+              <CardContent className="p-4 text-center text-white">
+                <Upload className="w-6 h-6 mx-auto mb-2" />
+                <p className="text-xs font-semibold">Analyze Doc</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to={createPageUrl("Drafting")}>
+            <Card className="bg-gradient-to-br from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 transition-all duration-300 shadow-lg border-0">
+              <CardContent className="p-4 text-center text-white">
+                <PenSquare className="w-6 h-6 mx-auto mb-2" />
+                <p className="text-xs font-semibold">Draft Doc</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to={createPageUrl("Dashboard")}>
+            <Card className="bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 transition-all duration-300 shadow-lg border-0">
+              <CardContent className="p-4 text-center text-white">
+                <BarChart3 className="w-6 h-6 mx-auto mb-2" />
+                <p className="text-xs font-semibold">Dashboard</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to={createPageUrl("Settings")}>
+            <Card className="bg-gradient-to-br from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 transition-all duration-300 shadow-lg border-0">
+              <CardContent className="p-4 text-center text-white">
+                <SettingsIcon className="w-6 h-6 mx-auto mb-2" />
+                <p className="text-xs font-semibold">Settings</p>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      </section>
+
+      {/* Hero Section */}
+      <section className="px-6 py-16 md:py-24">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center max-w-4xl mx-auto"
+          >
+            {/* LegalLens Logo */}
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="flex items-center justify-center gap-4 mb-8"
+            >
+              <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl flex items-center justify-center shadow-2xl">
+                <Scale className="w-8 h-8 md:w-10 md:h-10 text-white" />
+              </div>
+              <div className="text-left">
+                <h2 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">
+                  LegalLens
+                </h2>
+                <p className="text-sm md:text-base text-blue-600 font-medium">
+                  Legal docs made simple
+                </p>
+              </div>
+            </motion.div>
+
+            <div className="flex justify-center mb-6">
+              <Badge className="bg-blue-100 text-blue-800 border-blue-200 px-4 py-2 text-sm">
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI-Powered Legal Analysis
+              </Badge>
+            </div>
+
+            <h1 className="text-4xl md:text-6xl font-bold text-slate-900 mb-6 leading-tight">
+              Legal Documents
+              <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"> Explained</span>
+              <br />Like You're 15
+            </h1>
+
+            <p className="text-xl text-slate-600 mb-10 leading-relaxed">
+              Upload any contract, rental agreement, or legal document. Get instant plain-language summaries,
+              red flag alerts, and real-world scenarios in your preferred language.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+              <Link to={createPageUrl("Upload")}>
+                <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all duration-300">
+                  <Upload className="w-5 h-5 mr-2" />
+                  Analyze Document Now
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                className="border-2 border-slate-300 hover:border-blue-600 hover:text-blue-600 px-8 py-4 text-lg font-semibold transition-all duration-300"
+                onClick={() => openDemoModal('analysis')}
+              >
+                Watch Demo
+              </Button>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                className="text-center"
+              >
+                <div className="text-3xl md:text-4xl font-bold text-blue-600 mb-2">
+                  {stats.documentsAnalyzed.toLocaleString()}+
+                </div>
+                <div className="text-slate-600 font-medium">Documents Analyzed</div>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.4 }}
+                className="text-center"
+              >
+                <div className="text-3xl md:text-4xl font-bold text-red-600 mb-2">
+                  {stats.redFlagsFound.toLocaleString()}+
+                </div>
+                <div className="text-slate-600 font-medium">Red Flags Detected</div>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.6 }}
+                className="text-center"
+              >
+                <div className="text-3xl md:text-4xl font-bold text-green-600 mb-2">
+                  {stats.usersHelped.toLocaleString()}+
+                </div>
+                <div className="text-slate-600 font-medium">Users Protected</div>
+              </motion.div>
+            </div>
+
+            {/* Add Logout Button */}
+            <div className="flex justify-center mt-8">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    await User.logout();
+                  } catch (error) {
+                    console.error("Logout failed:", error);
+                  }
+                }}
+                className="text-slate-600 hover:text-slate-900"
+              >
+                Logout Account
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="px-6 py-20 bg-white/50">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6">
+              How It Works
+            </h2>
+            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
+              Transform complex legal documents into clear, actionable insights with our AI-powered analysis
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {features.map((feature, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+              >
+                <Card className="h-full bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 group">
+                  <CardContent className="p-8 text-center">
+                    <div className={`w-16 h-16 ${feature.color} rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300`}>
+                      <feature.icon className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-4">{feature.title}</h3>
+                    <p className="text-slate-600 leading-relaxed">{feature.description}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Process Steps */}
+      <section className="px-6 py-20">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6">
+              Simple 3-Step Process
+            </h2>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                step: "01",
+                title: "Upload Document",
+                description: "Drag & drop any PDF or image of your legal document",
+                icon: Upload
+              },
+              {
+                step: "02",
+                title: "AI Analysis",
+                description: "Our AI reads every clause and identifies potential issues",
+                icon: Sparkles
+              },
+              {
+                step: "03",
+                title: "Get Insights",
+                description: "Receive plain-language summary with red flag alerts",
+                icon: CheckCircle
+              }
+            ].map((step, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.2 }}
+                className="relative"
+              >
+                <Card className="bg-gradient-to-br from-white to-blue-50/50 border-0 shadow-lg">
+                  <CardContent className="p-8 text-center">
+                    <div className="text-6xl font-bold text-blue-200 mb-4">{step.step}</div>
+                    <step.icon className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-slate-900 mb-3">{step.title}</h3>
+                    <p className="text-slate-600">{step.description}</p>
+                  </CardContent>
+                </Card>
+                {index < 2 && (
+                  <ArrowRight className="hidden md:block absolute -right-4 top-1/2 transform -translate-y-1/2 text-blue-400 w-8 h-8" />
+                )}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Drafting Section */}
+      <section className="px-6 py-20 bg-white/50">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6">
+              Draft Legal Documents Instantly
+            </h2>
+            <p className="text-xl text-slate-600 max-w-3xl mx-auto">
+              Select a document type, describe your needs, and let our AI generate a professional draft for you.
+            </p>
+            <Button
+              variant="link"
+              className="mt-4 text-blue-600"
+              onClick={() => openDemoModal('drafting')}
+            >
+              Watch Drafting Demo
+            </Button>
+          </motion.div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {documentTypes.map((doc, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.05 }}
+              >
+                <Link to={createPageUrl(`Drafting?type=${doc.slug}`)}>
+                  <Card className="h-full bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl hover:bg-blue-50 transition-all duration-300 group text-center">
+                    <CardContent className="p-6">
+                      <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                        <doc.icon className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-900 mb-1">{doc.name}</h3>
+                      <p className="text-xs text-slate-500">{doc.description}</p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="px-6 py-20 bg-gradient-to-r from-blue-600 to-indigo-600">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
+              <strong>Real people sharing how LegalLens protected them from legal traps</strong>
+            </h2>
+            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
+              Real people sharing how LegalLens protected them from legal traps
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {testimonials.map((testimonial, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+              >
+                <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
+                  <CardContent className="p-8">
+                    <div className="flex mb-4">
+                      {[...Array(testimonial.rating)].map((_, i) => (
+                        <span key={i} className="text-yellow-400 text-xl">★</span>
+                      ))}
+                    </div>
+                    <p className="text-white/90 mb-6 italic">"{testimonial.quote}"</p>
+                    <div>
+                      <div className="font-semibold">{testimonial.name}</div>
+                      <div className="text-blue-200 text-sm">{testimonial.role}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Review Section */}
+      <section className="px-6 py-20 bg-white">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-6">
+              Share Your Experience
+            </h2>
+            <p className="text-xl text-slate-600 mb-8">
+              Help others by sharing how LegalLens helped you understand your legal documents
+            </p>
+            <Button className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+              Write a Review
+            </Button>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="px-6 py-20 bg-slate-900">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
+              Don't Sign Blind
+            </h2>
+            <p className="text-xl text-slate-300 mb-10">
+              Join thousands who use LegalLens to understand what they're signing
+            </p>
+            <Link to={createPageUrl("Upload")}>
+              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-10 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all duration-300">
+                <Scale className="w-5 h-5 mr-2" />
+                Analyze Your First Document Free
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      <DemoVideoModal
+        open={isDemoModalOpen}
+        onOpenChange={setIsDemoModalOpen}
+        videoUrl={demoVideoUrl}
+        title={demoVideoTitle}
+      />
+    </div>
+  );
+}

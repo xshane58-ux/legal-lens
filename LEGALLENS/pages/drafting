@@ -1,0 +1,643 @@
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+import { InvokeLLM, UploadFile, ExtractDataFromUploadedFile } from '@/integrations/Core';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+import { 
+  ArrowLeft, 
+  ArrowRight,
+  Sparkles, 
+  Loader2, 
+  Copy, 
+  Download, 
+  AlertTriangle,
+  Wand2,
+  PenSquare,
+  Briefcase,
+  Home as HomeIcon,
+  Handshake,
+  FileSignature,
+  HeartHandshake,
+  Users,
+  Shield,
+  FileText,
+  Upload as UploadIcon,
+  Camera,
+  CheckCircle
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import CameraScanner from '@/components/upload/CameraScanner';
+
+const documentTypes = [
+  { name: "Rental Agreement", slug: "rental-agreement", icon: HomeIcon, description: "For landlords and tenants" },
+  { name: "Employment Contract", slug: "employment-contract", icon: Briefcase, description: "For employers and employees" },
+  { name: "Freelance Contract", slug: "freelance-contract", icon: PenSquare, description: "For independent contractors" },
+  { name: "NDA", slug: "non-disclosure-agreement", icon: Shield, description: "To protect sensitive information" },
+  { name: "Will & Testament", slug: "will-and-testament", icon: FileSignature, description: "To outline your last wishes" },
+  { name: "Loan Agreement", slug: "loan-agreement", icon: Handshake, description: "For personal or business loans" },
+  { name: "Service Agreement", slug: "service-agreement", icon: HeartHandshake, description: "For providing or receiving services" },
+  { name: "Partnership Agreement", slug: "partnership-agreement", icon: Users, description: "For starting a business partnership" },
+  { name: "Power of Attorney", slug: "power-of-attorney", icon: FileText, description: "To grant legal authority" },
+  { name: "Privacy Policy", slug: "privacy-policy", icon: Shield, description: "For websites and apps" },
+  { name: "Terms of Service", slug: "terms-of-service", icon: FileText, description: "For online platforms" },
+  { name: "Bill of Sale", slug: "bill-of-sale", icon: Handshake, description: "To document a sale of goods" },
+  { name: "Cease & Desist", slug: "cease-and-desist", icon: AlertTriangle, description: "To demand an end to an action" },
+  { name: "Promissory Note", slug: "promissory-note", icon: Handshake, description: "A written promise to pay money" },
+  { name: "Affidavit", slug: "affidavit", icon: FileSignature, description: "A sworn statement of fact" },
+  { name: "Other", slug: "other", icon: Sparkles, description: "Draft a custom document" }
+];
+
+export default function Drafting() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState('input');
+  const [requirements, setRequirements] = useState('');
+  const [file, setFile] = useState(null);
+  const [docType, setDocType] = useState('');
+  const [docTypeName, setDocTypeName] = useState('');
+  const [generatedDraft, setGeneratedDraft] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleDrag = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const validFile = droppedFiles.find(file => 
+      file.type === "application/pdf" || file.type.startsWith("image/")
+    );
+
+    if (validFile) {
+      setFile(validFile);
+      setError(null);
+    }
+  }, []);
+
+  const handleFileSelect = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile && (selectedFile.type === "application/pdf" || selectedFile.type.startsWith("image/"))) {
+      setFile(selectedFile);
+      setError(null);
+    }
+  };
+
+  const handleCapture = (capturedFile) => {
+    if (capturedFile) {
+      setFile(capturedFile);
+      setError(null);
+    }
+    setIsCameraOpen(false);
+  };
+
+  const handleNextToTypeSelection = () => {
+    if (!requirements.trim() && !file) {
+      setError("Please provide your requirements in text or upload a reference document.");
+      return;
+    }
+    setError(null);
+    setStep('select_type');
+  };
+
+  const handleSelectDocType = (typeSlug) => {
+    const selectedDoc = documentTypes.find(d => d.slug === typeSlug);
+    if (selectedDoc) {
+      setDocType(selectedDoc.slug);
+      setDocTypeName(selectedDoc.name);
+      setStep('generate');
+      handleGenerateDraft(selectedDoc.name);
+    }
+  };
+
+  const handleGenerateDraft = async (documentName) => {
+    setIsGenerating(true);
+    setError(null);
+    setGeneratedDraft('');
+    setProgress(0);
+
+    try {
+      let contextData = requirements;
+      
+      // If file is uploaded, extract data from it first
+      if (file) {
+        setProgress(20);
+        const { file_url } = await UploadFile({ file });
+        
+        setProgress(40);
+        const extractResult = await ExtractDataFromUploadedFile({
+          file_url,
+          json_schema: {
+            type: "object",
+            properties: {
+              content: { type: "string" },
+              key_points: { type: "array", items: { type: "string" } },
+              parties: { type: "array", items: { type: "string" } },
+              terms: { type: "array", items: { type: "string" } }
+            }
+          }
+        });
+
+        if (extractResult.status === "success") {
+          contextData = `Text requirements: ${requirements}\n\nReference document data: ${JSON.stringify(extractResult.output)}`;
+        }
+      }
+
+      setProgress(70);
+      const prompt = `You are an expert legal document drafter specializing in Indian law. Generate a professional, comprehensive draft for a "${documentName}".
+
+User's requirements and context:
+"${contextData}"
+
+Instructions:
+1. Create a complete, legally sound document suitable for use in India
+2. Include appropriate placeholders like [Name], [Address], [Date], [Amount] etc. where personal details are needed
+3. Use proper legal language and structure
+4. Include all necessary clauses for this type of document
+5. Format as clean HTML for display in a rich text editor
+6. Start with a clear document title
+
+Return only the HTML content of the document draft.`;
+      
+      const result = await InvokeLLM({ 
+        prompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            draft_html: {
+              type: "string",
+              description: "The complete legal document draft in clean HTML format ready for display."
+            }
+          },
+          required: ["draft_html"]
+        }
+      });
+
+      setProgress(100);
+
+      if (result && result.draft_html) {
+        setGeneratedDraft(result.draft_html);
+      } else {
+        throw new Error("AI returned an invalid response format.");
+      }
+    } catch (err) {
+      setError("Failed to generate the document draft. Please try again.");
+      console.error("Draft generation error:", err);
+    }
+
+    setIsGenerating(false);
+  };
+  
+  const copyToClipboard = () => {
+    const el = document.createElement('div');
+    el.innerHTML = generatedDraft;
+    navigator.clipboard.writeText(el.innerText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  
+  const downloadDraft = () => {
+    const el = document.createElement('div');
+    el.innerHTML = generatedDraft;
+    const blob = new Blob([el.innerText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${docType || 'document'}-draft.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBackToInput = () => {
+    setStep('input');
+    setError(null);
+  };
+
+  const handleBackToTypeSelection = () => {
+    setStep('select_type');
+    setDocType('');
+    setDocTypeName('');
+    setGeneratedDraft('');
+    setError(null);
+  };
+
+  const handleStartOver = () => {
+    setStep('input');
+    setRequirements('');
+    setFile(null);
+    setDocType('');
+    setDocTypeName('');
+    setGeneratedDraft('');
+    setError(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => {
+              if (step === 'input') {
+                navigate(createPageUrl("Home"));
+              } else if (step === 'select_type') {
+                handleBackToInput();
+              } else {
+                handleBackToTypeSelection();
+              }
+            }}
+            className="hover:bg-blue-50"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">AI Document Drafter</h1>
+            <p className="text-slate-600 mt-1">
+              {step === 'input' && "Step 1: Describe your requirements"}
+              {step === 'select_type' && "Step 2: Select document type"}
+              {step === 'generate' && `Drafting: ${docTypeName}`}
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <AnimatePresence mode="wait">
+          {/* Step 1: Input Requirements */}
+          {step === 'input' && (
+            <motion.div
+              key="input"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="grid lg:grid-cols-3 gap-8"
+            >
+              <div className="lg:col-span-2">
+                <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl font-bold">
+                      <Wand2 className="w-6 h-6 text-blue-600" />
+                      Describe Your Document Requirements
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold text-slate-900">
+                        Requirements (Text) *
+                      </label>
+                      <Textarea
+                        placeholder="Example: I need a rental agreement for a 2BHK apartment in Mumbai. Landlord is John Doe, tenant is Jane Smith. Monthly rent ₹50,000, security deposit ₹2,00,000. Lease period 11 months starting January 1st, 2024. Include clauses for maintenance, utilities, and early termination."
+                        value={requirements}
+                        onChange={(e) => setRequirements(e.target.value)}
+                        className="h-40 text-base"
+                      />
+                    </div>
+
+                    <div className="text-center">
+                      <span className="text-slate-500 font-medium">OR</span>
+                    </div>
+
+                    {/* File Upload Zone */}
+                    <div className="space-y-3">
+                      <label className="text-sm font-semibold text-slate-900">
+                        Upload Reference Document (Optional)
+                      </label>
+                      <div
+                        className={`relative border-2 border-dashed rounded-2xl p-6 transition-all duration-300 ${
+                          dragActive 
+                            ? "border-blue-500 bg-blue-50" 
+                            : "border-slate-300"
+                        }`}
+                        onDragEnter={handleDrag}
+                        onDragLeave={handleDrag}
+                        onDragOver={handleDrag}
+                        onDrop={handleDrop}
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                        />
+                        
+                        <div className="text-center">
+                          {file ? (
+                            <motion.div 
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              className="space-y-3"
+                            >
+                              <div className="w-12 h-12 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+                                <CheckCircle className="w-6 h-6 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-900">{file.name}</p>
+                                <p className="text-sm text-slate-500">
+                                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
+                              <Button variant="link" size="sm" onClick={() => setFile(null)}>
+                                Remove file
+                              </Button>
+                            </motion.div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="w-12 h-12 mx-auto bg-blue-100 rounded-full flex items-center justify-center">
+                                <UploadIcon className="w-6 h-6 text-blue-600" />
+                              </div>
+                              <div>
+                                <h3 className="text-base font-semibold text-slate-900 mb-2">
+                                  Drop reference document here
+                                </h3>
+                                <div className="flex items-center justify-center gap-3">
+                                  <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Browse Files
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setIsCameraOpen(true)}>
+                                    <Camera className="w-4 h-4 mr-2" />
+                                    Scan Document
+                                  </Button>
+                                </div>
+                                <p className="text-sm text-slate-500 mt-2">
+                                  PDF, PNG, JPEG files up to 10MB
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button 
+                      onClick={handleNextToTypeSelection}
+                      className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300"
+                    >
+                      <ArrowRight className="w-5 h-5 mr-2" />
+                      Next: Select Document Type
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Info Sidebar */}
+              <div className="space-y-6">
+                <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white border-none shadow-xl">
+                  <CardContent className="p-6">
+                    <h3 className="font-bold text-lg mb-4">How It Works</h3>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold">1</div>
+                        <span>Describe what you need</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold">2</div>
+                        <span>Select document type</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold">3</div>
+                        <span>Get AI-generated draft</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-amber-50 border-amber-200">
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-amber-600 mt-1" />
+                      <div>
+                        <h4 className="font-semibold text-amber-900 mb-2">Pro Tips</h4>
+                        <ul className="text-sm text-amber-800 space-y-1">
+                          <li>• Be specific about names, amounts, dates</li>
+                          <li>• Include all important terms</li>
+                          <li>• Upload similar documents as reference</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 2: Select Document Type */}
+          {step === 'select_type' && (
+            <motion.div
+              key="select_type"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+            >
+              <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-xl font-bold">
+                    <FileText className="w-6 h-6 text-blue-600" />
+                    Select Document Type to Generate
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {documentTypes.map((doc, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6, delay: index * 0.05 }}
+                      >
+                        <Card 
+                          className="h-full bg-white border-slate-200 shadow-md hover:shadow-xl hover:bg-blue-50 transition-all duration-300 group text-center cursor-pointer"
+                          onClick={() => handleSelectDocType(doc.slug)}
+                        >
+                          <CardContent className="p-6">
+                            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                              <doc.icon className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <h3 className="text-base font-bold text-slate-900 mb-2">{doc.name}</h3>
+                            <p className="text-xs text-slate-600">{doc.description}</p>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Step 3: Generate/Result */}
+          {step === 'generate' && (
+            <motion.div
+              key="generate"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="grid lg:grid-cols-3 gap-8"
+            >
+              <div className="lg:col-span-2">
+                <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="flex justify-between items-center text-xl font-bold">
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="w-6 h-6 text-green-600" />
+                        Generated {docTypeName}
+                      </span>
+                      {generatedDraft && (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={copyToClipboard}>
+                            <Copy className="w-4 h-4 mr-2" />
+                            {copied ? "Copied!" : "Copy"}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={downloadDraft}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </Button>
+                        </div>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Generation Progress */}
+                    {isGenerating && (
+                      <div className="space-y-4 bg-blue-50 p-6 rounded-xl mb-6">
+                        <div className="flex items-center gap-3">
+                          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                          <span className="font-medium text-slate-900">AI is drafting your document...</span>
+                        </div>
+                        <Progress value={progress} className="h-2" />
+                        <div className="text-sm text-slate-600">
+                          {progress < 30 && "Processing your requirements..."}
+                          {progress >= 30 && progress < 60 && "Extracting reference data..."}
+                          {progress >= 60 && progress < 90 && "Generating legal draft..."}
+                          {progress >= 90 && "Finalizing document..."}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="bg-white rounded-lg border" style={{ height: isGenerating ? '300px' : '500px' }}>
+                      {isGenerating && (
+                        <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                          <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                          <p>Generating your {docTypeName.toLowerCase()}...</p>
+                        </div>
+                      )}
+                      {!isGenerating && !generatedDraft && (
+                        <div className="flex flex-col items-center justify-center h-full text-slate-500 p-4 text-center">
+                          <AlertTriangle className="w-8 h-8 mb-4" />
+                          <p>Document generation failed. Please try again.</p>
+                        </div>
+                      )}
+                      {generatedDraft && (
+                        <ReactQuill
+                          value={generatedDraft}
+                          readOnly={true}
+                          theme="snow"
+                          modules={{ toolbar: false }}
+                          className="h-full border-none"
+                        />
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Sidebar */}
+              <div className="space-y-6">
+                <Card className="bg-gradient-to-br from-green-600 to-emerald-600 text-white border-none shadow-xl">
+                  <CardContent className="p-6 text-center">
+                    <FileSignature className="w-12 h-12 mx-auto mb-4 text-green-200" />
+                    <h3 className="font-bold text-lg mb-2">Draft Complete!</h3>
+                    <p className="text-green-100 text-sm mb-4">
+                      Your {docTypeName.toLowerCase()} has been generated. Review and customize as needed.
+                    </p>
+                    <Button 
+                      variant="secondary" 
+                      className="w-full bg-white text-green-600 hover:bg-green-50 mb-2"
+                      onClick={handleStartOver}
+                    >
+                      Draft Another Document
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Document Info</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-600">Type</p>
+                      <p className="text-slate-900">{docTypeName}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-600">Generated</p>
+                      <p className="text-slate-900">{new Date().toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-600">Status</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <span className="text-sm text-green-600 font-medium">Ready for Review</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-amber-50 border-amber-200">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 mt-1" />
+                      <div>
+                        <h4 className="font-semibold text-amber-900 mb-2">Important Note</h4>
+                        <p className="text-sm text-amber-800">
+                          Please review this draft with a legal professional before using it for official purposes.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <CameraScanner
+          open={isCameraOpen}
+          onOpenChange={setIsCameraOpen}
+          onCapture={handleCapture}
+        />
+      </div>
+    </div>
+  );
+}

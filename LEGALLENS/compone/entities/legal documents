@@ -1,0 +1,115 @@
+{
+  "name": "LegalDocument",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Document title or name"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "rental_agreement",
+        "loan_agreement",
+        "employment_contract",
+        "service_agreement",
+        "purchase_agreement",
+        "nda",
+        "other"
+      ],
+      "description": "Type of legal document"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL of the uploaded document"
+    },
+    "original_language": {
+      "type": "string",
+      "default": "english",
+      "description": "Original language of the document"
+    },
+    "analysis_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Status of document analysis"
+    },
+    "plain_summary": {
+      "type": "string",
+      "description": "Plain language summary of the document"
+    },
+    "red_flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "clause": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "scenario": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Identified problematic clauses"
+    },
+    "risk_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Overall risk score (0-100)"
+    },
+    "key_terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "term": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Important terms explained simply"
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "situation": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Real-world scenarios and outcomes"
+    }
+  },
+  "required": [
+    "title",
+    "document_type",
+    "file_url"
+  ]
+}

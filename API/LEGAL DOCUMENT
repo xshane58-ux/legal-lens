@@ -1,0 +1,27 @@
+// JavaScript Example: Reading Entities
+// Filterable fields: title, document_type, file_url, original_language, analysis_status, plain_summary, red_flags, risk_score, key_terms, scenarios
+async function fetchLegalDocumentEntities() {
+    const response = await fetch(`https://app.base44.com/api/apps/68c6d6aa1d277670929e508f/entities/LegalDocument`, {
+        headers: {
+            'api_key': '0613e827247d41aeb7ada3a52b698aaf', // or use await User.me() to get the API key
+            'Content-Type': 'application/json'
+        }
+    });
+    const data = await response.json();
+    console.log(data);
+}
+
+// JavaScript Example: Updating an Entity
+// Filterable fields: title, document_type, file_url, original_language, analysis_status, plain_summary, red_flags, risk_score, key_terms, scenarios
+async function updateLegalDocumentEntity(entityId, updateData) {
+    const response = await fetch(`https://app.base44.com/api/apps/68c6d6aa1d277670929e508f/entities/LegalDocument/${entityId}`, {
+        method: 'PUT',
+        headers: {
+            'api_key': '0613e827247d41aeb7ada3a52b698aaf', // or use await User.me() to get the API key
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+    });
+    const data = await response.json();
+    console.log(data);
+}

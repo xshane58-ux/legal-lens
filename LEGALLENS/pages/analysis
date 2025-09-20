@@ -1,0 +1,433 @@
+
+import React, { useState, useEffect, useCallback } from "react";
+import { LegalDocument, User } from "@/entities/all"; // Added User import
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { 
+  ArrowLeft, 
+  AlertTriangle, 
+  CheckCircle, 
+  FileText, 
+  Download,
+  Share,
+  Shield,
+  TrendingUp,
+  ExternalLink,
+  Trash2
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { motion } from "framer-motion";
+
+export default function Analysis() {
+  const navigate = useNavigate();
+  const [document, setDocument] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false); // New state for deletion loading
+
+  const showRatingPrompt = useCallback(() => {
+    const rating = prompt("How would you rate your experience with LegalLens? (1-5 stars)\n\n1 = Poor\n2 = Fair\n3 = Good\n4 = Very Good\n5 = Excellent");
+    
+    if (rating && rating >= 1 && rating <= 5) {
+      alert(`Thank you for rating us ${rating} star${rating > 1 ? 's' : ''}! Your feedback helps us improve.`);
+    }
+  }, []);
+
+  const checkFirstTimeUser = useCallback(async () => {
+    try {
+      const user = await User.me();
+      const documents = await LegalDocument.list();
+      const userDocuments = documents.filter(doc => doc.created_by === user.email);
+      
+      if (userDocuments.length === 1) {
+        // This is their first document, show rating prompt
+        setTimeout(() => {
+          showRatingPrompt();
+        }, 3000); // Show after 3 seconds
+      }
+    } catch (error) {
+      console.log("Could not check user status:", error);
+    }
+  }, [showRatingPrompt]); // showRatingPrompt is now a dependency
+
+  useEffect(() => {
+    loadDocument();
+    // Check if this is user's first document analysis for rating prompt
+    checkFirstTimeUser();
+  }, [checkFirstTimeUser]); // checkFirstTimeUser is now a dependency
+
+  const loadDocument = async () => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const docId = urlParams.get('id');
+      
+      if (!docId) {
+        setError("No document ID provided");
+        return;
+      }
+
+      const docs = await LegalDocument.list();
+      const doc = docs.find(d => d.id === docId);
+      
+      if (!doc) {
+        setError("Document not found");
+        return;
+      }
+
+      setDocument(doc);
+    } catch (error) {
+      setError("Failed to load document analysis");
+      console.error("Load error:", error);
+    }
+    setLoading(false);
+  };
+
+  // New function for document deletion
+  const handleDeleteDocument = async () => {
+    if (!document) return; // Ensure document exists
+
+    if (!confirm(`Are you sure you want to delete "${document.title}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await LegalDocument.delete(document.id);
+      navigate(createPageUrl("Dashboard")); // Redirect to Dashboard after successful deletion
+    } catch (error) {
+      console.error("Failed to delete document:", error);
+      alert("Failed to delete document. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const getRiskColor = (score) => {
+    if (score >= 75) return "text-red-600 bg-red-100";
+    if (score >= 50) return "text-amber-600 bg-amber-100";
+    if (score >= 25) return "text-yellow-600 bg-yellow-100";
+    return "text-green-600 bg-green-100";
+  };
+
+  const getRiskLevelColor = (level) => {
+    const colors = {
+      critical: "bg-red-500 text-white",
+      high: "bg-red-400 text-white",
+      medium: "bg-amber-500 text-white",
+      low: "bg-blue-500 text-white"
+    };
+    return colors[level] || colors.low;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-slate-600">Loading analysis...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !document) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+        <div className="max-w-6xl mx-auto">
+          <Alert variant="destructive" className="mt-8">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error || "Document not found"}</AlertDescription>
+          </Alert>
+          <Button 
+            onClick={() => navigate(createPageUrl("Home"))} 
+            className="mt-4"
+            variant="outline"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => navigate(createPageUrl("Dashboard"))}
+              className="hover:bg-blue-50"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-900">{document.title}</h1>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge className="bg-blue-100 text-blue-800">
+                  {document.document_type.replace(/_/g, ' ').toUpperCase()}
+                </Badge>
+                <Badge variant="outline">
+                  {document.original_language.toUpperCase()}
+                </Badge>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-3">
+            <Button variant="outline" className="gap-2">
+              <Share className="w-4 h-4" />
+              Share
+            </Button>
+            <Button variant="outline" className="gap-2">
+              <Download className="w-4 h-4" />
+              Export
+            </Button>
+            <Button 
+              className="gap-2 bg-blue-600 hover:bg-blue-700"
+              onClick={() => window.open(document.file_url, '_blank')}
+            >
+              <ExternalLink className="w-4 h-4" />
+              View Original
+            </Button>
+            {/* New Delete Button */}
+            <Button 
+              variant="outline"
+              className="gap-2 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={handleDeleteDocument}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <div className="w-4 h-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              Delete
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-4 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-3 space-y-8">
+            {/* Risk Score */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <Shield className="w-6 h-6 text-blue-600" />
+                    Risk Assessment
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-6">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-slate-600">Overall Risk Score</span>
+                        <span className={`text-lg font-bold px-3 py-1 rounded-full ${getRiskColor(document.risk_score || 0)}`}>
+                          {document.risk_score || 0}/100
+                        </span>
+                      </div>
+                      <Progress value={document.risk_score || 0} className="h-3" />
+                    </div>
+                    <div className="text-center">
+                      <TrendingUp className={`w-12 h-12 mx-auto mb-2 ${
+                        (document.risk_score || 0) >= 50 ? 'text-red-500' : 'text-green-500'
+                      }`} />
+                      <p className="text-sm text-slate-600">
+                        {(document.risk_score || 0) >= 75 ? 'High Risk' : 
+                         (document.risk_score || 0) >= 50 ? 'Medium Risk' : 
+                         (document.risk_score || 0) >= 25 ? 'Low Risk' : 'Very Low Risk'}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Plain Language Summary */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+            >
+              <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <FileText className="w-6 h-6 text-green-600" />
+                    Plain Language Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-green-50 p-6 rounded-xl">
+                    <p className="text-slate-800 leading-relaxed text-lg">
+                      {document.plain_summary || "Summary not available"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Red Flags */}
+            {document.red_flags && document.red_flags.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <AlertTriangle className="w-6 h-6 text-red-600" />
+                      Red Flags Detected
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {document.red_flags.map((flag, index) => (
+                        <div key={index} className="border-l-4 border-red-500 bg-red-50 p-4 rounded-r-xl">
+                          <div className="flex justify-between items-start mb-3">
+                            <h4 className="font-semibold text-slate-900">{flag.clause}</h4>
+                            <Badge className={getRiskLevelColor(flag.risk_level)}>
+                              {flag.risk_level.toUpperCase()}
+                            </Badge>
+                          </div>
+                          <p className="text-slate-700 mb-3">{flag.explanation}</p>
+                          {flag.scenario && (
+                            <div className="bg-white p-3 rounded-lg">
+                              <p className="text-sm font-medium text-slate-600 mb-1">Real-world scenario:</p>
+                              <p className="text-sm text-slate-800">{flag.scenario}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Key Terms */}
+            {document.key_terms && document.key_terms.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+              >
+                <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <CheckCircle className="w-6 h-6 text-blue-600" />
+                      Key Terms Explained
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {document.key_terms.map((term, index) => (
+                        <div key={index} className="bg-blue-50 p-4 rounded-xl">
+                          <h4 className="font-semibold text-slate-900 mb-2">{term.term}</h4>
+                          <p className="text-slate-700 text-sm">{term.explanation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Scenarios */}
+            {document.scenarios && document.scenarios.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
+                <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="text-xl">What Could Happen? Real-World Scenarios</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {document.scenarios.map((scenario, index) => (
+                        <div key={index} className="bg-purple-50 p-4 rounded-xl">
+                          <h4 className="font-semibold text-slate-900 mb-2">{scenario.situation}</h4>
+                          <p className="text-slate-700">{scenario.outcome}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white border-none shadow-xl">
+              <CardContent className="p-6 text-center">
+                <Shield className="w-12 h-12 mx-auto mb-4 text-blue-200" />
+                <h3 className="font-bold text-lg mb-2">Analysis Complete!</h3>
+                <p className="text-blue-100 text-sm mb-4">
+                  Your document has been thoroughly analyzed for potential legal issues.
+                </p>
+                <Button 
+                  variant="secondary" 
+                  className="w-full bg-white text-blue-600 hover:bg-blue-50"
+                  onClick={() => navigate(createPageUrl("Upload"))}
+                >
+                  Analyze Another Document
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Document Info</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Type</p>
+                  <p className="text-slate-900 capitalize">
+                    {document.document_type.replace(/_/g, ' ')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Language</p>
+                  <p className="text-slate-900 capitalize">{document.original_language}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Analysis Date</p>
+                  <p className="text-slate-900">
+                    {new Date(document.created_date).toLocaleDateString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Status</p>
+                  <Badge className="bg-green-100 text-green-800">
+                    {document.analysis_status}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

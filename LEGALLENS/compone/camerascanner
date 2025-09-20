@@ -1,0 +1,114 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Camera, Zap, Loader2, RefreshCw } from 'lucide-react';
+
+export default function CameraScanner({ open, onOpenChange, onCapture }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [error, setError] = useState(null);
+
+  const startCamera = useCallback(async () => {
+    setError(null);
+    setIsCameraReady(false);
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsCameraReady(true);
+      }
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      setError("Could not access camera. Please check permissions and try again.");
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraReady(false);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => stopCamera();
+  }, [open, startCamera, stopCamera]);
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !isCameraReady) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      const file = new File([blob], `scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      onCapture(file);
+      onOpenChange(false);
+    }, 'image/jpeg', 0.9);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Camera className="w-5 h-5" />
+            Scan Document
+          </DialogTitle>
+        </DialogHeader>
+        <div className="relative aspect-video bg-slate-900 rounded-lg overflow-hidden">
+          <video
+            ref={videoRef}
+            playsInline
+            muted
+            className="w-full h-full object-contain"
+          />
+          {!isCameraReady && !error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/50">
+              <Loader2 className="w-8 h-8 animate-spin mb-4" />
+              <p>Starting camera...</p>
+            </div>
+          )}
+          {error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/50 p-4 text-center">
+              <Zap className="w-8 h-8 text-red-400 mb-4" />
+              <p className="font-semibold mb-4">{error}</p>
+              <Button onClick={startCamera} variant="outline" className="bg-transparent text-white hover:bg-white/10">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={capturePhoto}
+            disabled={!isCameraReady}
+            className="w-full bg-blue-600 hover:bg-blue-700"
+          >
+            <Camera className="w-5 h-5 mr-2" />
+            Capture
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

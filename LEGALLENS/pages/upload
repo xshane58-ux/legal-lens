@@ -1,0 +1,453 @@
+
+import React, { useState, useCallback, useRef } from "react";
+import { LegalDocument } from "@/entities/all";
+import { ExtractDataFromUploadedFile, UploadFile, InvokeLLM } from "@/integrations/Core";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Upload as UploadIcon, 
+  FileText, 
+  Camera, 
+  Loader2, 
+  CheckCircle, 
+  AlertTriangle,
+  ArrowLeft,
+  Sparkles
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import CameraScanner from "@/components/upload/CameraScanner"; // Corrected path to use @/components
+
+export default function Upload() {
+  const navigate = useNavigate();
+  const [file, setFile] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const [documentType, setDocumentType] = useState("");
+  const [language, setLanguage] = useState("english");
+  const [isCameraOpen, setIsCameraOpen] = useState(false); // New state for camera scanner
+  const fileInputRef = useRef(null);
+
+  const handleDrag = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const validFile = droppedFiles.find(file => 
+      file.type === "application/pdf" || file.type.startsWith("image/")
+    );
+
+    if (!validFile) {
+      setError("Please upload a PDF or image file");
+      return;
+    }
+
+    setFile(validFile);
+    setError(null);
+  }, []);
+
+  const handleFileSelect = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile && (selectedFile.type === "application/pdf" || selectedFile.type.startsWith("image/"))) {
+      setFile(selectedFile);
+      setError(null);
+    } else {
+      setError("Please select a PDF or image file");
+    }
+  };
+
+  const handleCapture = (capturedFile) => {
+    if (capturedFile) {
+      setFile(capturedFile);
+      setError(null);
+    } else {
+      setError("Failed to capture image. Please try again.");
+    }
+    setIsCameraOpen(false); // Close camera after capture attempt
+  };
+
+  const analyzeDocument = async () => {
+    if (!file || !documentType) {
+      setError("Please select a file and document type");
+      return;
+    }
+
+    setProcessing(true);
+    setProgress(0);
+    setError(null);
+
+    try {
+      // Step 1: Upload file
+      setProgress(20);
+      const { file_url } = await UploadFile({ file });
+
+      // Step 2: Extract basic data
+      setProgress(40);
+      const extractResult = await ExtractDataFromUploadedFile({
+        file_url,
+        json_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            parties: { type: "array", items: { type: "string" } },
+            key_clauses: { type: "array", items: { type: "string" } },
+            important_dates: { type: "array", items: { type: "string" } },
+            financial_terms: { type: "array", items: { type: "string" } }
+          }
+        }
+      });
+
+      if (extractResult.status !== "success") {
+        throw new Error("Failed to extract document data");
+      }
+
+      // Step 3: AI Analysis
+      setProgress(70);
+      const analysisResult = await InvokeLLM({
+        prompt: `You are a legal expert analyzing a ${documentType.replace('_', ' ')} document. 
+
+Document data: ${JSON.stringify(extractResult.output)}
+
+Please provide a comprehensive analysis in ${language} with:
+
+1. A plain language summary (explain like the reader is 15 years old)
+2. Identify red flag clauses with risk levels (low/medium/high/critical)
+3. Key terms explained simply
+4. Real-world scenarios of what could happen
+5. Overall risk score (0-100)
+
+Focus on protecting the document signer from potential legal traps.`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            plain_summary: { type: "string" },
+            red_flags: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  clause: { type: "string" },
+                  explanation: { type: "string" },
+                  risk_level: { type: "string" },
+                  scenario: { type: "string" }
+                }
+              }
+            },
+            key_terms: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  term: { type: "string" },
+                  explanation: { type: "string" }
+                }
+              }
+            },
+            scenarios: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  situation: { type: "string" },
+                  outcome: { type: "string" }
+                }
+              }
+            },
+            risk_score: { type: "number" }
+          }
+        }
+      });
+
+      // Step 4: Save to database
+      setProgress(90);
+      const documentData = {
+        title: extractResult.output.title || file.name,
+        document_type: documentType,
+        file_url,
+        original_language: language,
+        analysis_status: "completed",
+        ...analysisResult
+      };
+
+      const savedDoc = await LegalDocument.create(documentData);
+      setProgress(100);
+
+      // Navigate to results
+      setTimeout(() => {
+        navigate(createPageUrl(`Analysis?id=${savedDoc.id}`));
+      }, 1000);
+
+    } catch (error) {
+      setError("Analysis failed. Please try again.");
+      console.error("Analysis error:", error);
+    }
+
+    setProcessing(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate(createPageUrl("Home"))}
+            className="hover:bg-blue-50"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">Document Analysis</h1>
+            <p className="text-slate-600 mt-1">Upload your legal document for instant analysis</p>
+          </div>
+        </div>
+
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Upload Section */}
+          <div className="lg:col-span-2">
+            <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl font-bold">
+                  <Sparkles className="w-6 h-6 text-blue-600" />
+                  Upload Your Document
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* File Upload Zone */}
+                <div
+                  className={`relative border-2 border-dashed rounded-2xl p-8 transition-all duration-300 ${
+                    dragActive 
+                      ? "border-blue-500 bg-blue-50" 
+                      : "border-slate-300 hover:border-blue-400 hover:bg-blue-50/50" // Removed direct click handler from this div
+                  }`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  
+                  <div className="text-center">
+                    {file ? (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="space-y-4"
+                      >
+                        <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+                          <CheckCircle className="w-8 h-8 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{file.name}</p>
+                          <p className="text-sm text-slate-500">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                        <Button variant="link" size="sm" onClick={() => setFile(null)}>
+                          Choose a different file
+                        </Button>
+                      </motion.div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="w-16 h-16 mx-auto bg-blue-100 rounded-full flex items-center justify-center">
+                          <UploadIcon className="w-8 h-8 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                            Drop your document here
+                          </h3>
+                          <div className="flex items-center justify-center gap-4">
+                            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                              <FileText className="w-4 h-4 mr-2" />
+                              Browse Files
+                            </Button>
+                            <Button variant="outline" onClick={() => setIsCameraOpen(true)}>
+                              <Camera className="w-4 h-4 mr-2" />
+                              Scan Document
+                            </Button>
+                          </div>
+                          <p className="text-sm text-slate-500 mt-4">
+                            Supports PDF, PNG, JPEG files up to 10MB
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Document Type Selection */}
+                <div className="space-y-3">
+                  <label className="text-sm font-semibold text-slate-900">
+                    Document Type *
+                  </label>
+                  <Select value={documentType} onValueChange={setDocumentType}>
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder="Select document type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rental_agreement">Rental Agreement</SelectItem>
+                      <SelectItem value="loan_agreement">Loan Agreement</SelectItem>
+                      <SelectItem value="employment_contract">Employment Contract</SelectItem>
+                      <SelectItem value="service_agreement">Service Agreement</SelectItem>
+                      <SelectItem value="purchase_agreement">Purchase Agreement</SelectItem>
+                      <SelectItem value="nda">Non-Disclosure Agreement</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Language Selection */}
+                <div className="space-y-3">
+                  <label className="text-sm font-semibold text-slate-900">
+                    Explanation Language
+                  </label>
+                  <Select value={language} onValueChange={setLanguage}>
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder="Select language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">English</SelectItem>
+                      <SelectItem value="hindi">Hindi (हिंदी)</SelectItem>
+                      <SelectItem value="tamil">Tamil (தமிழ்)</SelectItem>
+                      <SelectItem value="bengali">Bengali (বাংলা)</SelectItem>
+                      <SelectItem value="telugu">Telugu (తెలుగు)</SelectItem>
+                      <SelectItem value="marathi">Marathi (मराठी)</SelectItem>
+                      <SelectItem value="gujarati">Gujarati (ગુજરાતી)</SelectItem>
+                      <SelectItem value="kannada">Kannada (ಕನ್ನಡ)</SelectItem>
+                      <SelectItem value="malayalam">Malayalam (മലയാളം)</SelectItem>
+                      <SelectItem value="punjabi">Punjabi (ਪੰਜਾਬੀ)</SelectItem>
+                      <SelectItem value="odia">Odia (ଓଡ଼ିଆ)</SelectItem>
+                      <SelectItem value="assamese">Assamese (অসমীয়া)</SelectItem>
+                      <SelectItem value="urdu">Urdu (اردو)</SelectItem>
+                      <SelectItem value="sanskrit">Sanskrit (संस्कृतम्)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Analysis Progress */}
+                <AnimatePresence>
+                  {processing && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-4 bg-blue-50 p-6 rounded-xl"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        <span className="font-medium text-slate-900">Analyzing your document...</span>
+                      </div>
+                      <Progress value={progress} className="h-2" />
+                      <div className="text-sm text-slate-600">
+                        {progress < 30 && "Uploading document..."}
+                        {progress >= 30 && progress < 60 && "Extracting text and clauses..."}
+                        {progress >= 60 && progress < 90 && "AI analyzing for red flags..."}
+                        {progress >= 90 && progress < 100 && "Generating summary..."}
+                        {progress === 100 && "Analysis complete! Redirecting..."}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Analyze Button */}
+                <Button 
+                  onClick={analyzeDocument}
+                  disabled={!file || !documentType || processing}
+                  className="w-full h-14 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300"
+                >
+                  {processing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5 mr-2" />
+                      Analyze Document
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Info Sidebar */}
+          <div className="space-y-6">
+            <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white border-none shadow-xl">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-lg mb-4">What You'll Get</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-blue-200" />
+                    <span className="text-sm">Plain language summary</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-300" />
+                    <span className="text-sm">Red flag detection</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-green-300" />
+                    <span className="text-sm">Risk assessment</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-amber-50 border-amber-200">
+              <CardContent className="p-6">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-1" />
+                  <div>
+                    <h4 className="font-semibold text-amber-900 mb-2">Privacy Notice</h4>
+                    <p className="text-sm text-amber-800">
+                      Your documents are processed securely and deleted after analysis. 
+                      We never store or share your legal documents.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+      <CameraScanner
+        open={isCameraOpen}
+        onOpenChange={setIsCameraOpen}
+        onCapture={handleCapture}
+      />
+    </div>
+  );
+}
